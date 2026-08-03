@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: collector
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+server:
+  port: 8081
+
+upbit:
+  websocket:
+    uri: wss://api.upbit.com/websocket/v1
+    markets:
+      - KRW-BTC
+      - KRW-ETH
+      - KRW-XRP
+    reconnect-delay-seconds: 5

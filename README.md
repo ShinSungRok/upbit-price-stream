@@ -1,0 +1,102 @@
+# Upbit Price Stream — Kafka & Kubernetes 기반 실시간 암호화폐 시세 스트리밍 파이프라인
+
+업비트(Upbit) 공개 WebSocket에서 들어오는 실시간 시세를 **Apache Kafka**로 수집·분산 처리하고, **Kubernetes** 위에서 각 컴포넌트를 독립적으로 배포·확장하는 것을 목표로 하는 스트리밍 데이터 엔지니어링 포트폴리오 프로젝트입니다.
+
+> **현재 단계: Phase 1** — 로컬 Kafka 기준으로 수집 → 집계 → 실시간 전송까지 전체 파이프라인이 동작합니다. Kubernetes 배포(Strimzi, Helm, ArgoCD)는 Phase 2에서 진행됩니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정) 참고.
+
+## 왜 Kafka인가
+
+업비트는 다수의 마켓(KRW-BTC, KRW-ETH, KRW-XRP …)에 대한 시세/체결 이벤트를 초당 다건, 불규칙한 빈도로 밀어냅니다. 단순히 "WebSocket으로 받아서 바로 처리하고 바로 내보내는" 구조는 수집 속도와 처리 속도가 강하게 결합되어, 처리 쪽에서 지연이나 재시작이 발생하면 데이터가 유실됩니다.
+
+Kafka를 중간에 두면:
+
+- **생산자(collector)와 소비자(stream-processor, api-server)가 분리**되어, 한쪽이 느려지거나 재시작해도 다른 쪽에 영향을 주지 않습니다.
+- **내구성 있는 재생(replay)** 이 가능해, 장애 이후에도 업비트에 다시 연결하지 않고 이미 수집된 이벤트를 재처리할 수 있습니다.
+- **다중 소비자 구조**를 자연스럽게 지원합니다 — 지금은 캔들 집계(stream-processor) 하나지만, 이후 영속화·알림 등 새로운 소비자를 추가해도 collector 쪽 코드를 건드릴 필요가 없습니다.
+
+## 왜 Kubernetes인가
+
+collector·stream-processor·api-server는 서로 다른 축으로 스케일링이 필요합니다 — collector는 구독 중인 WebSocket 연결 수, stream-processor는 파티션 수/CPU, api-server는 동시 WebSocket 클라이언트 수에 좌우됩니다. Kubernetes는 컴포넌트별로 독립적인 HPA(오토스케일링)와 self-healing(예: collector 크래시 시 자동 재시작)을 제공하여, 이 프로젝트가 "한 번 실행하고 끝나는 스크립트"가 아니라 "계속 살아있는 서비스"로 동작할 때 필요한 특성을 정확히 보여줍니다. (Phase 2에서 Strimzi Operator + Helm + ArgoCD로 구현 예정)
+
+## 아키텍처
+
+```mermaid
+graph LR
+    U[Upbit WebSocket<br/>wss://api.upbit.com] -->|ticker/trade| C[collector]
+    C -->|upbit.ticker.raw<br/>upbit.trade.raw| K[(Kafka)]
+    K --> SP[stream-processor<br/>Kafka Streams]
+    SP -->|candle.1m| K
+    K --> API[api-server<br/>WebFlux]
+    API -->|WebSocket /ws/stream| CLIENT[브라우저 클라이언트]
+```
+
+## 데이터 흐름 (이벤트 하나의 생애주기)
+
+```mermaid
+sequenceDiagram
+    participant Upbit
+    participant Collector as collector
+    participant Kafka
+    participant Processor as stream-processor
+    participant Api as api-server
+    participant Client as 브라우저
+
+    Upbit->>Collector: 바이너리 프레임 (ticker/trade JSON)
+    Collector->>Collector: 파싱 (TickerEvent/TradeEvent)
+    Collector->>Kafka: upbit.ticker.raw / upbit.trade.raw
+    Kafka->>Processor: upbit.ticker.raw 소비
+    Processor->>Processor: 1분 윈도우 OHLCV 집계
+    Processor->>Kafka: candle.1m
+    Kafka->>Api: candle.1m / upbit.ticker.raw 소비
+    Api->>Client: WebSocket 실시간 push
+```
+
+## 모듈 구성
+
+| 모듈 | 역할 |
+|---|---|
+| `common` | 공유 DTO(`TickerEvent`, `TradeEvent`, `CandleEvent`), Kafka 토픽 상수 |
+| `collector` | 업비트 WebSocket 클라이언트 → Kafka 프로듀서. 연결 끊김 시 자동 재연결 |
+| `stream-processor` | Kafka Streams 기반 1분 캔들(OHLCV) 집계 |
+| `api-server` | Reactive Kafka Consumer → WebSocket(`/ws/stream`)으로 실시간 전송 |
+
+## 기술 스택
+
+| 영역 | 선택 | 비고 |
+|---|---|---|
+| 언어 | Kotlin 2.3.20 | |
+| 런타임 | Java 21 (LTS) | |
+| 프레임워크 | Spring Boot 4.1.0 | collector/stream-processor는 MVC, api-server는 WebFlux |
+| 메시징 | Apache Kafka 4.2.x (KRaft) | ZooKeeper 없이 컨트롤러 내장 |
+| 스트림 처리 | Kafka Streams | 1분 tumbling window OHLCV 집계 |
+| 리액티브 Kafka | reactor-kafka | api-server의 실시간 소비/전송 |
+| 직렬화 | kotlinx.serialization | Kafka 메시지 JSON 직렬화 |
+| 빌드 | Gradle 9.5.1 (Kotlin DSL) | |
+| CI | GitHub Actions | |
+| 컨테이너 오케스트레이션 | Kubernetes + Strimzi + Helm + ArgoCD | **Phase 2 예정** |
+| 시계열 저장소 | QuestDB | **Phase 2 예정** |
+| 관측성 | OpenTelemetry + Prometheus/Loki/Tempo + Grafana | **Phase 2 예정** |
+
+## 로컬 실행
+
+```bash
+# 1. Kafka 기동 (KRaft 단일 브로커)
+docker compose up -d
+
+# 2. 각 모듈 실행 (별도 터미널)
+./gradlew :collector:bootRun
+./gradlew :stream-processor:bootRun
+./gradlew :api-server:bootRun
+
+# 3. 실시간 스트림 확인
+websocat ws://localhost:8080/ws/stream
+```
+
+## Phase 2 (예정)
+
+- Kubernetes 매니페스트 / Helm 차트, Strimzi Operator로 Kafka 클러스터 운영, ArgoCD GitOps 배포
+- QuestDB 영속화 (저장 + 조회 API)
+- Redis 캐시 레이어
+- Avro + Apicurio 스키마 레지스트리
+- OpenTelemetry/Prometheus/Loki/Tempo/Grafana 관측성 스택
+- Testcontainers 기반 통합 테스트
