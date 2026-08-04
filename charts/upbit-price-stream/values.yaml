@@ -51,7 +51,7 @@ apiServer:
     tag: latest
   resources:
     requests:
-      memory: 256Mi
+      memory: 288Mi
       cpu: 100m
     limits:
       memory: 384Mi
