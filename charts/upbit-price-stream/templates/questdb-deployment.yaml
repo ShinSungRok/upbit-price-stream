@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: questdb
+  labels:
+    app: questdb
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: questdb
+  template:
+    metadata:
+      labels:
+        app: questdb
+    spec:
+      containers:
+        - name: questdb
+          image: "{{ .Values.questdb.image.repository }}:{{ .Values.questdb.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.questdb.service.httpPort }}
+            - containerPort: {{ .Values.questdb.service.pgWirePort }}
+          volumeMounts:
+            - name: questdb-data
+              mountPath: /var/lib/questdb
+          resources:
+{{ toYaml .Values.questdb.resources | indent 12 }}
+      volumes:
+        - name: questdb-data
+          persistentVolumeClaim:
+            claimName: questdb-data

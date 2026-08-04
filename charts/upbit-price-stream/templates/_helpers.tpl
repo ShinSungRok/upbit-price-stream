@@ -1,6 +1,6 @@
 {{/*
-Renders a Deployment for one of the three app components.
-Expects a dict: name, image, resources, autoscaling, root, and optionally port.
+Renders a Deployment for one of the app components.
+Expects a dict: name, image, resources, autoscaling, root, and optionally port, extraEnv (list of {name, value}).
 */}}
 {{- define "upbit.appDeployment" -}}
 apiVersion: apps/v1
@@ -32,6 +32,10 @@ spec:
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "{{ .root.Values.kafka.clusterName }}-kafka-bootstrap:9092"
+            {{- range .extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
           resources:
 {{ toYaml .resources | indent 12 }}
 {{- end -}}

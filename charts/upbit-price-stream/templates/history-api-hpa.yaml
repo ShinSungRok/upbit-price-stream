@@ -1,0 +1,1 @@
+{{ include "upbit.appHpa" (dict "name" "history-api" "autoscaling" .Values.historyApi.autoscaling) }}

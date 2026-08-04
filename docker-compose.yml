@@ -58,3 +58,37 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
     restart: unless-stopped
+
+  questdb:
+    image: questdb/questdb:9.4.3
+    container_name: upbit-questdb
+    ports:
+      - "19000:9000" # web console + ILP-over-HTTP
+      - "18812:8812" # Postgres wire (psql/JDBC)
+    volumes:
+      - questdb-data:/var/lib/questdb
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9003/status || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  history-api:
+    build:
+      context: ./history-api
+    container_name: upbit-history-api
+    depends_on:
+      kafka:
+        condition: service_healthy
+      questdb:
+        condition: service_healthy
+    ports:
+      - "18083:8083"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      QUESTDB_ILP_ADDRESS: questdb:9000
+      QUESTDB_JDBC_URL: jdbc:postgresql://questdb:8812/qdb
+    restart: unless-stopped
+
+volumes:
+  questdb-data:

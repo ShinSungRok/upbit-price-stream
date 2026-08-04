@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: questdb
+spec:
+  type: ClusterIP
+  selector:
+    app: questdb
+  ports:
+    - name: http
+      port: {{ .Values.questdb.service.httpPort }}
+      targetPort: {{ .Values.questdb.service.httpPort }}
+    - name: pgwire
+      port: {{ .Values.questdb.service.pgWirePort }}
+      targetPort: {{ .Values.questdb.service.pgWirePort }}

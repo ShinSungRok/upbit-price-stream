@@ -63,3 +63,39 @@ apiServer:
     targetCPUUtilizationPercentage: 70
   service:
     port: 8080
+
+questdb:
+  image:
+    repository: questdb/questdb
+    tag: 9.4.3
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 100m
+    limits:
+      memory: 768Mi
+      cpu: 500m
+  storage:
+    size: 1Gi
+  service:
+    httpPort: 9000
+    pgWirePort: 8812
+
+historyApi:
+  image:
+    repository: upbit-price-stream-history-api
+    tag: latest
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 384Mi
+      cpu: 500m
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  service:
+    port: 8083

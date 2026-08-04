@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: history-api
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: history-api
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  datasource:
+    url: ${QUESTDB_JDBC_URL:jdbc:postgresql://localhost:8812/qdb}
+    username: ${QUESTDB_JDBC_USER:admin}
+    password: ${QUESTDB_JDBC_PASSWORD:quest}
+    driver-class-name: org.postgresql.Driver
+
+questdb:
+  ilp-address: ${QUESTDB_ILP_ADDRESS:localhost:9000}
+
+server:
+  port: 8083
