@@ -3,7 +3,7 @@ kind: KafkaNodePool
 metadata:
   name: dual-role
   labels:
-    strimzi.io/cluster: upbit-kafka
+    strimzi.io/cluster: {{ .Values.kafka.clusterName }}
 spec:
   replicas: 1
   roles:
@@ -16,12 +16,7 @@ spec:
         type: ephemeral
         kraftMetadata: shared
   resources:
-    requests:
-      memory: 640Mi
-      cpu: 250m
-    limits:
-      memory: 640Mi
-      cpu: 1000m
+{{ toYaml .Values.kafka.resources | indent 4 }}
   jvmOptions:
-    "-Xms": "384m"
-    "-Xmx": "384m"
+    "-Xms": {{ .Values.kafka.jvmHeap | quote }}
+    "-Xmx": {{ .Values.kafka.jvmHeap | quote }}

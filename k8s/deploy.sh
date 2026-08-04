@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 
 CLUSTER=upbit
 NAMESPACE=upbit
+RELEASE=upbit
+CHART=charts/upbit-price-stream
 GRADLE_IMAGE=eclipse-temurin:21-jdk
 STRIMZI_VERSION=1.1.0
 STRIMZI_KAFKA_VERSION=4.2.1
@@ -46,11 +48,7 @@ echo "==> 4/7 Strimzi Cluster Operator 설치"
 kubectl -n "$NAMESPACE" apply -f "https://strimzi.io/install/latest?namespace=${NAMESPACE}"
 kubectl -n "$NAMESPACE" wait deployment/strimzi-cluster-operator --for=condition=Available --timeout=300s
 
-echo "==> 5/7 Kafka 클러스터 배포 (KafkaNodePool + Kafka CR)"
-kubectl -n "$NAMESPACE" apply -f k8s/kafka-nodepool.yaml -f k8s/kafka-cluster.yaml
-kubectl -n "$NAMESPACE" wait kafka/upbit-kafka --for=condition=Ready --timeout=300s
-
-echo "==> 6/7 앱 이미지 빌드 + 클러스터로 import"
+echo "==> 5/7 앱 이미지 빌드 + 클러스터로 import"
 docker run --rm --network host \
   -v "$(pwd)":/workspace -w /workspace \
   -v gradle-cache:/root/.gradle \
@@ -60,14 +58,14 @@ import_image upbit-price-stream-collector:latest
 import_image upbit-price-stream-stream-processor:latest
 import_image upbit-price-stream-api-server:latest
 
-echo "==> 7/7 앱 배포"
-kubectl -n "$NAMESPACE" apply \
-  -f k8s/collector-deployment.yaml \
-  -f k8s/stream-processor-deployment.yaml \
-  -f k8s/api-server-deployment.yaml \
-  -f k8s/api-server-service.yaml
+echo "==> 6/7 Helm 차트 배포 (Kafka + 앱 3개 + HPA)"
+helm upgrade --install "$RELEASE" "$CHART" -n "$NAMESPACE" --create-namespace
+kubectl -n "$NAMESPACE" wait kafka/upbit-kafka --for=condition=Ready --timeout=300s
+
+echo "==> 7/7 앱 기동 대기"
 kubectl -n "$NAMESPACE" wait --for=condition=Available deployment --all --timeout=300s
 
 echo "==> 완료. 확인:"
 echo "  kubectl -n ${NAMESPACE} get pods"
+echo "  kubectl -n ${NAMESPACE} get hpa"
 echo "  kubectl -n ${NAMESPACE} port-forward svc/api-server 18081:8080"

@@ -7,5 +7,5 @@ spec:
   selector:
     app: api-server
   ports:
-    - port: 8080
-      targetPort: 8080
+    - port: {{ .Values.apiServer.service.port }}
+      targetPort: {{ .Values.apiServer.service.port }}

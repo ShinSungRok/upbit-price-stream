@@ -1,0 +1,6 @@
+apiVersion: v2
+name: upbit-price-stream
+description: Upbit 실시간 시세 스트리밍 파이프라인 (Kafka on Strimzi + collector/stream-processor/api-server)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

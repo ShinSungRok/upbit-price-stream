@@ -1,0 +1,65 @@
+kafka:
+  clusterName: upbit-kafka
+  version: 4.2.1
+  metadataVersion: 4.2-IV1
+  jvmHeap: 384m
+  resources:
+    requests:
+      memory: 640Mi
+      cpu: 250m
+    limits:
+      memory: 640Mi
+      cpu: 1000m
+
+collector:
+  image:
+    repository: upbit-price-stream-collector
+    tag: latest
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 384Mi
+      cpu: 500m
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+streamProcessor:
+  image:
+    repository: upbit-price-stream-stream-processor
+    tag: latest
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 384Mi
+      cpu: 500m
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+apiServer:
+  image:
+    repository: upbit-price-stream-api-server
+    tag: latest
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 384Mi
+      cpu: 500m
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+  service:
+    port: 8080

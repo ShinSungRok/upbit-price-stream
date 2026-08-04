@@ -1,0 +1,1 @@
+{{ include "upbit.appDeployment" (dict "name" "stream-processor" "image" .Values.streamProcessor.image "resources" .Values.streamProcessor.resources "autoscaling" .Values.streamProcessor.autoscaling "root" $) }}

@@ -2,7 +2,7 @@
 
 업비트(Upbit) 공개 WebSocket에서 들어오는 실시간 시세를 **Apache Kafka**로 수집·분산 처리하고, **Kubernetes** 위에서 각 컴포넌트를 독립적으로 배포·확장하는 것을 목표로 하는 스트리밍 데이터 엔지니어링 포트폴리오 프로젝트입니다.
 
-> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator로 Kafka와 앱 3개를 배포하는 raw 매니페스트까지 완료(로컬 k3d 클러스터에서 실제 기동 검증됨). Helm 차트화·ArgoCD GitOps는 다음 단계입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정)와 [`k8s/README.md`](k8s/README.md) 참고.
+> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator로 Kafka와 앱 3개(+ HPA 오토스케일링)를 Helm 차트로 배포하는 것까지 완료(로컬 k3d 클러스터에서 실제 기동·오토스케일링 검증됨). ArgoCD GitOps는 다음 단계입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정)와 [`k8s/README.md`](k8s/README.md) 참고.
 
 ## 왜 Kafka인가
 
@@ -16,7 +16,7 @@ Kafka를 중간에 두면:
 
 ## 왜 Kubernetes인가
 
-collector·stream-processor·api-server는 서로 다른 축으로 스케일링이 필요합니다 — collector는 구독 중인 WebSocket 연결 수, stream-processor는 파티션 수/CPU, api-server는 동시 WebSocket 클라이언트 수에 좌우됩니다. Kubernetes는 컴포넌트별로 독립적인 HPA(오토스케일링)와 self-healing(예: collector 크래시 시 자동 재시작)을 제공하여, 이 프로젝트가 "한 번 실행하고 끝나는 스크립트"가 아니라 "계속 살아있는 서비스"로 동작할 때 필요한 특성을 정확히 보여줍니다. Kafka 자체도 Strimzi Operator를 통해 K8s 네이티브 리소스(`Kafka`, `KafkaNodePool` CR)로 선언적으로 운영합니다 — [`k8s/`](k8s/) 참고.
+collector·stream-processor·api-server는 서로 다른 축으로 스케일링이 필요합니다 — collector는 구독 중인 WebSocket 연결 수, stream-processor는 파티션 수/CPU, api-server는 동시 WebSocket 클라이언트 수에 좌우됩니다. Kubernetes는 컴포넌트별로 독립적인 HPA(오토스케일링)와 self-healing(예: collector 크래시 시 자동 재시작)을 제공하여, 이 프로젝트가 "한 번 실행하고 끝나는 스크립트"가 아니라 "계속 살아있는 서비스"로 동작할 때 필요한 특성을 정확히 보여줍니다. 앱 3개 모두 CPU 기준 HPA(`minReplicas: 1, maxReplicas: 3`)가 실제로 붙어 있고, k3d 로컬 검증에서 기동 시 CPU 스파이크로 3 replica까지 스케일 아웃되는 것도 확인했습니다. Kafka 자체도 Strimzi Operator를 통해 K8s 네이티브 리소스(`Kafka`, `KafkaNodePool` CR)로 선언적으로 운영합니다 — [`charts/upbit-price-stream`](charts/upbit-price-stream) 참고.
 
 ## 아키텍처
 
@@ -73,7 +73,7 @@ sequenceDiagram
 | 직렬화 | kotlinx.serialization | Kafka 메시지 JSON 직렬화 |
 | 빌드 | Gradle 9.5.1 (Kotlin DSL) | |
 | CI | GitHub Actions | |
-| 컨테이너 오케스트레이션 | Kubernetes + Strimzi | K8s 매니페스트/k3d 검증 완료, **Helm + ArgoCD는 Phase 2 예정** |
+| 컨테이너 오케스트레이션 | Kubernetes + Strimzi + Helm | K8s 매니페스트/HPA/k3d 검증 완료, **ArgoCD는 Phase 2 예정** |
 | 시계열 저장소 | QuestDB | **Phase 2 예정** |
 | 관측성 | OpenTelemetry + Prometheus/Loki/Tempo + Grafana | **Phase 2 예정** |
 
@@ -92,21 +92,22 @@ websocat ws://localhost:18080/ws/stream
 
 ## Kubernetes 실행 (k3d)
 
-Strimzi Operator로 Kafka를, plain Deployment로 앱 3개를 띄웁니다. 자세한 설계
-근거(리소스 제약, ephemeral storage, Entity Operator 미사용 등)는
-[`k8s/README.md`](k8s/README.md) 참고.
+Strimzi Operator로 Kafka를, [Helm 차트](charts/upbit-price-stream)로 앱 3개(+HPA)를
+띄웁니다. 자세한 설계 근거(리소스 제약, ephemeral storage, Entity Operator 미사용
+등)는 [`k8s/README.md`](k8s/README.md) 참고.
 
 ```bash
 ./k8s/deploy.sh
 
 kubectl -n upbit get pods
+kubectl -n upbit get hpa
 kubectl -n upbit port-forward svc/api-server 18081:8080
 ```
 
 ## Phase 2 (예정)
 
 - [x] Kubernetes 매니페스트 + Strimzi Operator로 Kafka 클러스터 운영 (k3d로 로컬 검증 완료)
-- [ ] 위 매니페스트를 Helm 차트로 패키징
+- [x] 위 매니페스트를 Helm 차트로 패키징 (+ HPA 오토스케일링 추가, k3d에서 실제 스케일 아웃 확인)
 - [ ] ArgoCD GitOps 배포
 - [ ] QuestDB 영속화 (저장 + 조회 API)
 - [ ] Redis 캐시 레이어

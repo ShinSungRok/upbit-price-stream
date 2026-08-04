@@ -1,0 +1,1 @@
+{{ include "upbit.appDeployment" (dict "name" "collector" "image" .Values.collector.image "resources" .Values.collector.resources "autoscaling" .Values.collector.autoscaling "root" $) }}

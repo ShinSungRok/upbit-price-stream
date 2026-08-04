@@ -1,14 +1,14 @@
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
-  name: upbit-kafka
+  name: {{ .Values.kafka.clusterName }}
   annotations:
     strimzi.io/node-pools: enabled
     strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 4.2.1
-    metadataVersion: 4.2-IV1
+    version: {{ .Values.kafka.version }}
+    metadataVersion: {{ .Values.kafka.metadataVersion }}
     listeners:
       - name: plain
         port: 9092
