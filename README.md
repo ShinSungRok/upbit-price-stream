@@ -2,7 +2,7 @@
 
 업비트(Upbit) 공개 WebSocket에서 들어오는 실시간 시세를 **Apache Kafka**로 수집·분산 처리하고, **Kubernetes** 위에서 각 컴포넌트를 독립적으로 배포·확장하는 것을 목표로 하는 스트리밍 데이터 엔지니어링 포트폴리오 프로젝트입니다.
 
-> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps까지 로컬 k3d 클러스터에서 실제 배포·자동 동기화 검증 완료. 남은 항목은 QuestDB/Redis/스키마 레지스트리/관측성/통합테스트입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
+> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps, 그리고 QuestDB 영속화까지 로컬 k3d/docker-compose에서 실제 배포·동작 검증 완료. 남은 항목은 Redis/스키마 레지스트리/관측성/통합테스트입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
 
 ## 왜 Kafka인가
 
@@ -12,7 +12,7 @@ Kafka를 중간에 두면:
 
 - **생산자(collector)와 소비자(stream-processor, api-server)가 분리**되어, 한쪽이 느려지거나 재시작해도 다른 쪽에 영향을 주지 않습니다.
 - **내구성 있는 재생(replay)** 이 가능해, 장애 이후에도 업비트에 다시 연결하지 않고 이미 수집된 이벤트를 재처리할 수 있습니다.
-- **다중 소비자 구조**를 자연스럽게 지원합니다 — 지금은 캔들 집계(stream-processor) 하나지만, 이후 영속화·알림 등 새로운 소비자를 추가해도 collector 쪽 코드를 건드릴 필요가 없습니다.
+- **다중 소비자 구조**를 자연스럽게 지원합니다 — collector 코드를 건드리지 않고 `candle.1m`에 새 소비자(`history-api`, QuestDB 영속화)를 추가했습니다.
 
 ## 왜 Kubernetes인가
 
@@ -28,6 +28,9 @@ graph LR
     SP -->|candle.1m| K
     K --> API[api-server<br/>WebFlux]
     API -->|WebSocket /ws/stream| CLIENT[브라우저 클라이언트]
+    K --> HA[history-api]
+    HA -->|ILP write| QDB[(QuestDB)]
+    HA -->|GET /api/candles<br/>JDBC| QDB
 ```
 
 ## 데이터 흐름 (이벤트 하나의 생애주기)
@@ -59,6 +62,7 @@ sequenceDiagram
 | `collector` | 업비트 WebSocket 클라이언트 → Kafka 프로듀서. 연결 끊김 시 자동 재연결 |
 | `stream-processor` | Kafka Streams 기반 1분 캔들(OHLCV) 집계 |
 | `api-server` | Reactive Kafka Consumer → WebSocket(`/ws/stream`)으로 실시간 전송 |
+| `history-api` | `candle.1m`을 QuestDB에 영속화(ILP), `GET /api/candles`로 히스토리 조회 |
 
 ## 기술 스택
 
@@ -74,7 +78,7 @@ sequenceDiagram
 | 빌드 | Gradle 9.5.1 (Kotlin DSL) | |
 | CI | GitHub Actions | |
 | 컨테이너 오케스트레이션 | Kubernetes + Strimzi + Helm + ArgoCD | K8s 매니페스트/HPA/GitOps 자동 동기화까지 k3d 검증 완료 |
-| 시계열 저장소 | QuestDB | **Phase 2 예정** |
+| 시계열 저장소 | QuestDB 9.4.3 | ILP(쓰기) + Postgres wire/JDBC(조회), `DEDUP UPSERT KEYS`로 부분 캔들 업데이트를 (market, 분)당 1행으로 압축 |
 | 관측성 | OpenTelemetry + Prometheus/Loki/Tempo + Grafana | **Phase 2 예정** |
 
 ## 로컬 실행
@@ -83,16 +87,19 @@ sequenceDiagram
 # 1. 각 모듈 jar 빌드 (compose 이미지가 이 결과물을 그대로 복사함)
 ./gradlew build
 
-# 2. Kafka + collector + stream-processor + api-server 전체 스택 기동
+# 2. Kafka + collector + stream-processor + api-server + questdb + history-api 전체 스택 기동
 docker compose up -d --build
 
 # 3. 실시간 스트림 확인 (api-server는 호스트 18080 포트로 노출)
 websocat ws://localhost:18080/ws/stream
+
+# 4. 히스토리 조회 (history-api는 호스트 18083, QuestDB 웹 콘솔은 19000)
+curl "http://localhost:18083/api/candles?market=KRW-BTC&from=0&to=9999999999999"
 ```
 
 ## Kubernetes 실행 (k3d)
 
-Strimzi Operator로 Kafka를, [Helm 차트](charts/upbit-price-stream)로 앱 3개(+HPA)를
+Strimzi Operator로 Kafka를, [Helm 차트](charts/upbit-price-stream)로 앱 4개(+QuestDB, +HPA)를
 띄웁니다. 두 가지 배포 경로가 있습니다:
 
 ```bash
@@ -112,7 +119,7 @@ kubectl -n upbit port-forward svc/api-server 18081:8080
 - [x] Kubernetes 매니페스트 + Strimzi Operator로 Kafka 클러스터 운영 (k3d로 로컬 검증 완료)
 - [x] 위 매니페스트를 Helm 차트로 패키징 (+ HPA 오토스케일링 추가, k3d에서 실제 스케일 아웃 확인)
 - [x] ArgoCD GitOps 배포 (git push → 자동 동기화까지 k3d에서 실제 확인)
-- [ ] QuestDB 영속화 (저장 + 조회 API)
+- [x] QuestDB 영속화 (저장 + 조회 API) — `history-api` 모듈, ILP 쓰기 + JDBC 조회, DEDUP UPSERT KEYS 검증 완료
 - [ ] Redis 캐시 레이어
 - [ ] Avro + Apicurio 스키마 레지스트리
 - [ ] OpenTelemetry/Prometheus/Loki/Tempo/Grafana 관측성 스택
