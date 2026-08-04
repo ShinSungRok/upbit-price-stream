@@ -9,6 +9,10 @@ Strimzi Operator 설치 파일 자체는 이 저장소에 커밋하지 않는다
 직접 받아 적용한다. `charts/upbit-price-stream`은 우리가 소유하는 설정(Kafka 클러스터
 스펙, 앱 Deployment/HPA/Service)만 담는다.
 
+이 아래는 **직접 `helm upgrade --install`을 실행하는 경로**다. git을 소스오브트루스로
+삼아 ArgoCD가 자동으로 동기화하는 GitOps 경로는 [`argocd/README.md`](../argocd/README.md)
+참고 — 둘 다 클러스터/이미지 준비 로직(`bootstrap-cluster.sh`)은 공유한다.
+
 ## 실행
 
 ```bash
