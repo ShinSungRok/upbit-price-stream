@@ -80,16 +80,14 @@ sequenceDiagram
 ## 로컬 실행
 
 ```bash
-# 1. Kafka 기동 (KRaft 단일 브로커)
-docker compose up -d
+# 1. 각 모듈 jar 빌드 (compose 이미지가 이 결과물을 그대로 복사함)
+./gradlew build
 
-# 2. 각 모듈 실행 (별도 터미널)
-./gradlew :collector:bootRun
-./gradlew :stream-processor:bootRun
-./gradlew :api-server:bootRun
+# 2. Kafka + collector + stream-processor + api-server 전체 스택 기동
+docker compose up -d --build
 
-# 3. 실시간 스트림 확인
-websocat ws://localhost:8080/ws/stream
+# 3. 실시간 스트림 확인 (api-server는 호스트 18080 포트로 노출)
+websocat ws://localhost:18080/ws/stream
 ```
 
 ## Phase 2 (예정)
