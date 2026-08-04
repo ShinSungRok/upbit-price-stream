@@ -99,3 +99,17 @@ historyApi:
     targetCPUUtilizationPercentage: 70
   service:
     port: 8083
+
+valkey:
+  image:
+    repository: valkey/valkey
+    tag: 8.1-alpine
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 250m
+  service:
+    port: 6379
