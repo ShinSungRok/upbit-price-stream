@@ -1,0 +1,27 @@
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  labels:
+    strimzi.io/cluster: upbit-kafka
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: ephemeral
+        kraftMetadata: shared
+  resources:
+    requests:
+      memory: 640Mi
+      cpu: 250m
+    limits:
+      memory: 640Mi
+      cpu: 1000m
+  jvmOptions:
+    "-Xms": "384m"
+    "-Xmx": "384m"
