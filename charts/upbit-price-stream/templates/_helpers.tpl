@@ -32,6 +32,18 @@ spec:
           env:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "{{ .root.Values.kafka.clusterName }}-kafka-bootstrap:9092"
+            - name: OTEL_SERVICE_NAME
+              value: {{ .name }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://lgtm:{{ .root.Values.lgtm.service.otlpHttpPort }}"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
             {{- range .extraEnv }}
             - name: {{ .name }}
               value: {{ .value | quote }}

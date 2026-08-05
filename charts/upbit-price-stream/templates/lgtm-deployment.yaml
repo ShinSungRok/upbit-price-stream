@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lgtm
+  labels:
+    app: lgtm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lgtm
+  template:
+    metadata:
+      labels:
+        app: lgtm
+    spec:
+      containers:
+        - name: lgtm
+          image: "{{ .Values.lgtm.image.repository }}:{{ .Values.lgtm.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.lgtm.service.grafanaPort }}
+            - containerPort: {{ .Values.lgtm.service.otlpHttpPort }}
+          resources:
+{{ toYaml .Values.lgtm.resources | indent 12 }}

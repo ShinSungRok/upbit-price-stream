@@ -1,4 +1,5 @@
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY build/libs/stream-processor-*.jar app.jar
-ENTRYPOINT ["java", "-jar", "app.jar"]
+COPY stream-processor/build/libs/stream-processor-*.jar app.jar
+COPY otel-javaagent.jar otel-javaagent.jar
+ENTRYPOINT ["java", "-javaagent:/app/otel-javaagent.jar", "-jar", "app.jar"]

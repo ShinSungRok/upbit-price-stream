@@ -127,3 +127,18 @@ apicurioRegistry:
       cpu: 500m
   service:
     port: 8080
+
+lgtm:
+  image:
+    repository: grafana/otel-lgtm
+    tag: 0.30.0
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 200m
+    limits:
+      memory: 1536Mi
+      cpu: 1000m
+  service:
+    grafanaPort: 3000
+    otlpHttpPort: 4318

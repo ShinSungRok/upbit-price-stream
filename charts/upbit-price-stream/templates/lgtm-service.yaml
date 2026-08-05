@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lgtm
+spec:
+  type: ClusterIP
+  selector:
+    app: lgtm
+  ports:
+    - name: grafana
+      port: {{ .Values.lgtm.service.grafanaPort }}
+      targetPort: {{ .Values.lgtm.service.grafanaPort }}
+    - name: otlp-http
+      port: {{ .Values.lgtm.service.otlpHttpPort }}
+      targetPort: {{ .Values.lgtm.service.otlpHttpPort }}
