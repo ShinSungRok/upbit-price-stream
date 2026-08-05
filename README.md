@@ -2,7 +2,7 @@
 
 업비트(Upbit) 공개 WebSocket에서 들어오는 실시간 시세를 **Apache Kafka**로 수집·분산 처리하고, **Kubernetes** 위에서 각 컴포넌트를 독립적으로 배포·확장하는 것을 목표로 하는 스트리밍 데이터 엔지니어링 포트폴리오 프로젝트입니다.
 
-> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps, QuestDB 영속화, Valkey 캐시, Avro + Apicurio 스키마 레지스트리까지 로컬 k3d/docker-compose에서 실제 배포·동작 검증 완료. 남은 항목은 관측성/통합테스트입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
+> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps, QuestDB 영속화, Valkey 캐시, Avro + Apicurio 스키마 레지스트리, OpenTelemetry + Grafana 관측성 스택까지 로컬 k3d/docker-compose에서 실제 배포·동작 검증 완료. 남은 항목은 통합테스트입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
 
 ## 왜 Kafka인가
 
@@ -57,6 +57,10 @@ sequenceDiagram
     Api->>Client: WebSocket 실시간 push
 ```
 
+## 관측성
+
+4개 앱 전부 코드 변경 없이 [OpenTelemetry Java Agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation)(`-javaagent`)로 Spring MVC/WebFlux/JDBC/Kafka 클라이언트를 바이트코드 레벨에서 자동 계측합니다. Kafka 클라이언트 계측이 트레이스 컨텍스트를 Kafka 메시지 헤더로 전파하기 때문에, **`stream-processor`가 `candle.1m`을 발행한 트레이스가 `api-server`/`history-api`의 소비까지 서비스 경계·프로세스 경계를 넘어 하나로 이어집니다** — 실제로 Tempo에서 확인했습니다(아래 로컬 실행 6번 참고). 백엔드는 [Grafana의 올인원 데모용 이미지](https://github.com/grafana/docker-otel-lgtm) `grafana/otel-lgtm`(OTel Collector + Prometheus + Loki + Tempo + Grafana) 하나로 운영합니다 — 컴포넌트 5개를 따로 띄우기엔 로컬 리소스가 빠듯하고, Grafana 자신도 이 이미지를 로컬 데모용으로 명시하고 있어 지금 목적과 맞습니다.
+
 ## 모듈 구성
 
 | 모듈 | 역할 |
@@ -84,7 +88,7 @@ sequenceDiagram
 | 시계열 저장소 | QuestDB 9.4.3 | ILP(쓰기) + Postgres wire/JDBC(조회), `DEDUP UPSERT KEYS`로 부분 캔들 업데이트를 (market, 분)당 1행으로 압축 |
 | 캐시 | Valkey 8.1 | Redis 대신 — RSAL/SSPL 라이선스 전환 이후 커뮤니티가 옮겨간 BSD-3 포크, 프로토콜 호환. 마켓별 최신 시세 캐시(TTL 24h) |
 | 스키마 레지스트리 | Avro + Apicurio Registry 3.3.1 | `candle.1m`(내부 계약)만 적용, Confluent 미의존 순수 Apache-2.0 스택 |
-| 관측성 | OpenTelemetry + Prometheus/Loki/Tempo + Grafana | **Phase 2 예정** |
+| 관측성 | OTel Java Agent 2.30.0 + `grafana/otel-lgtm`(Prometheus/Loki/Tempo/Grafana) | 앱 코드 변경 없이 자동 계측, Kafka 헤더로 트레이스 컨텍스트 전파 확인 |
 
 ## 로컬 실행
 
@@ -92,7 +96,7 @@ sequenceDiagram
 # 1. 각 모듈 jar 빌드 (compose 이미지가 이 결과물을 그대로 복사함)
 ./gradlew build
 
-# 2. Kafka + collector + stream-processor + api-server + questdb + history-api + valkey + apicurio-registry 전체 스택 기동
+# 2. Kafka + collector + stream-processor + api-server + questdb + history-api + valkey + apicurio-registry + lgtm 전체 스택 기동
 docker compose up -d --build
 
 # 3. 실시간 스트림 확인 (api-server는 호스트 18080 포트로 노출)
@@ -106,11 +110,15 @@ curl "http://localhost:18080/api/latest/KRW-BTC"
 
 # 6. candle.1m 스키마 등록 확인 (Apicurio Registry, 호스트 18084)
 curl "http://localhost:18084/apis/registry/v3/search/artifacts"
+
+# 7. 분산 트레이스 확인 (Grafana http://localhost:13000, admin/admin)
+# Explore → Tempo → Search → service.name=stream-processor, "candle.1m publish" 트레이스를 열면
+# api-server/history-api의 "candle.1m process" 스팬이 같은 트레이스 안에서 이어지는 걸 볼 수 있습니다.
 ```
 
 ## Kubernetes 실행 (k3d)
 
-Strimzi Operator로 Kafka를, [Helm 차트](charts/upbit-price-stream)로 앱 4개(+QuestDB, +Valkey, +Apicurio Registry, +HPA)를
+Strimzi Operator로 Kafka를, [Helm 차트](charts/upbit-price-stream)로 앱 4개(+QuestDB, +Valkey, +Apicurio Registry, +Grafana LGTM, +HPA)를
 띄웁니다. 두 가지 배포 경로가 있습니다:
 
 ```bash
@@ -133,5 +141,5 @@ kubectl -n upbit port-forward svc/api-server 18081:8080
 - [x] QuestDB 영속화 (저장 + 조회 API) — `history-api` 모듈, ILP 쓰기 + JDBC 조회, DEDUP UPSERT KEYS 검증 완료
 - [x] Redis 캐시 레이어 — Valkey, `api-server`에 마켓별 최신 시세 캐시(`GET /api/latest/{market}`, TTL 24h)
 - [x] Avro + Apicurio 스키마 레지스트리 — `candle.1m`(내부 계약)만 적용, WebSocket/REST는 계속 JSON
-- [ ] OpenTelemetry/Prometheus/Loki/Tempo/Grafana 관측성 스택
+- [x] OpenTelemetry/Prometheus/Loki/Tempo/Grafana 관측성 스택 — `-javaagent` 자동 계측(코드 변경 없음), Kafka 헤더로 서비스 경계를 넘는 분산 트레이스 확인
 - [ ] Testcontainers 기반 통합 테스트
