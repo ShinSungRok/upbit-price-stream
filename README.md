@@ -2,7 +2,7 @@
 
 업비트(Upbit) 공개 WebSocket에서 들어오는 실시간 시세를 **Apache Kafka**로 수집·분산 처리하고, **Kubernetes** 위에서 각 컴포넌트를 독립적으로 배포·확장하는 것을 목표로 하는 스트리밍 데이터 엔지니어링 포트폴리오 프로젝트입니다.
 
-> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps, QuestDB 영속화, Valkey 캐시까지 로컬 k3d/docker-compose에서 실제 배포·동작 검증 완료. 남은 항목은 스키마 레지스트리/관측성/통합테스트입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
+> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps, QuestDB 영속화, Valkey 캐시, Avro + Apicurio 스키마 레지스트리까지 로컬 k3d/docker-compose에서 실제 배포·동작 검증 완료. 남은 항목은 관측성/통합테스트입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
 
 ## 왜 Kafka인가
 
@@ -13,6 +13,8 @@ Kafka를 중간에 두면:
 - **생산자(collector)와 소비자(stream-processor, api-server)가 분리**되어, 한쪽이 느려지거나 재시작해도 다른 쪽에 영향을 주지 않습니다.
 - **내구성 있는 재생(replay)** 이 가능해, 장애 이후에도 업비트에 다시 연결하지 않고 이미 수집된 이벤트를 재처리할 수 있습니다.
 - **다중 소비자 구조**를 자연스럽게 지원합니다 — collector 코드를 건드리지 않고 `candle.1m`에 새 소비자(`history-api`, QuestDB 영속화)를 추가했습니다.
+
+`candle.1m`은 stream-processor가 만들어서 우리 서비스끼리만(api-server, history-api) 주고받는 내부 계약이라, Avro + [Apicurio Registry](https://www.apicur.io/registry/)로 스키마를 강제합니다. 반면 `upbit.ticker.raw`/`upbit.trade.raw`는 업비트 원본 포맷을 그대로 반영하는 수집 경계라 JSON을 유지합니다 — 우리가 스키마를 통제하는 지점에만 스키마 거버넌스를 적용한 의도적 선택입니다.
 
 ## 왜 Kubernetes인가
 
@@ -25,7 +27,7 @@ graph LR
     U[Upbit WebSocket<br/>wss://api.upbit.com] -->|ticker/trade| C[collector]
     C -->|upbit.ticker.raw<br/>upbit.trade.raw| K[(Kafka)]
     K --> SP[stream-processor<br/>Kafka Streams]
-    SP -->|candle.1m| K
+    SP -->|candle.1m Avro| K
     K --> API[api-server<br/>WebFlux]
     API -->|WebSocket /ws/stream| CLIENT[브라우저 클라이언트]
     API -->|캐시 write/read<br/>GET /api/latest| VK[(Valkey)]
@@ -63,7 +65,7 @@ sequenceDiagram
 | `collector` | 업비트 WebSocket 클라이언트 → Kafka 프로듀서. 연결 끊김 시 자동 재연결 |
 | `stream-processor` | Kafka Streams 기반 1분 캔들(OHLCV) 집계 |
 | `api-server` | Reactive Kafka Consumer → WebSocket(`/ws/stream`)으로 실시간 전송, Valkey에 마켓별 최신 시세 캐시(`GET /api/latest/{market}`) |
-| `history-api` | `candle.1m`을 QuestDB에 영속화(ILP), `GET /api/candles`로 히스토리 조회 |
+| `history-api` | `candle.1m`(Avro)을 QuestDB에 영속화(ILP), `GET /api/candles`로 히스토리 조회 |
 
 ## 기술 스택
 
@@ -81,6 +83,7 @@ sequenceDiagram
 | 컨테이너 오케스트레이션 | Kubernetes + Strimzi + Helm + ArgoCD | K8s 매니페스트/HPA/GitOps 자동 동기화까지 k3d 검증 완료 |
 | 시계열 저장소 | QuestDB 9.4.3 | ILP(쓰기) + Postgres wire/JDBC(조회), `DEDUP UPSERT KEYS`로 부분 캔들 업데이트를 (market, 분)당 1행으로 압축 |
 | 캐시 | Valkey 8.1 | Redis 대신 — RSAL/SSPL 라이선스 전환 이후 커뮤니티가 옮겨간 BSD-3 포크, 프로토콜 호환. 마켓별 최신 시세 캐시(TTL 24h) |
+| 스키마 레지스트리 | Avro + Apicurio Registry 3.3.1 | `candle.1m`(내부 계약)만 적용, Confluent 미의존 순수 Apache-2.0 스택 |
 | 관측성 | OpenTelemetry + Prometheus/Loki/Tempo + Grafana | **Phase 2 예정** |
 
 ## 로컬 실행
@@ -89,7 +92,7 @@ sequenceDiagram
 # 1. 각 모듈 jar 빌드 (compose 이미지가 이 결과물을 그대로 복사함)
 ./gradlew build
 
-# 2. Kafka + collector + stream-processor + api-server + questdb + history-api + valkey 전체 스택 기동
+# 2. Kafka + collector + stream-processor + api-server + questdb + history-api + valkey + apicurio-registry 전체 스택 기동
 docker compose up -d --build
 
 # 3. 실시간 스트림 확인 (api-server는 호스트 18080 포트로 노출)
@@ -100,11 +103,14 @@ curl "http://localhost:18083/api/candles?market=KRW-BTC&from=0&to=9999999999999"
 
 # 5. 최신 시세 캐시 조회
 curl "http://localhost:18080/api/latest/KRW-BTC"
+
+# 6. candle.1m 스키마 등록 확인 (Apicurio Registry, 호스트 18084)
+curl "http://localhost:18084/apis/registry/v3/search/artifacts"
 ```
 
 ## Kubernetes 실행 (k3d)
 
-Strimzi Operator로 Kafka를, [Helm 차트](charts/upbit-price-stream)로 앱 4개(+QuestDB, +Valkey, +HPA)를
+Strimzi Operator로 Kafka를, [Helm 차트](charts/upbit-price-stream)로 앱 4개(+QuestDB, +Valkey, +Apicurio Registry, +HPA)를
 띄웁니다. 두 가지 배포 경로가 있습니다:
 
 ```bash
@@ -126,6 +132,6 @@ kubectl -n upbit port-forward svc/api-server 18081:8080
 - [x] ArgoCD GitOps 배포 (git push → 자동 동기화까지 k3d에서 실제 확인)
 - [x] QuestDB 영속화 (저장 + 조회 API) — `history-api` 모듈, ILP 쓰기 + JDBC 조회, DEDUP UPSERT KEYS 검증 완료
 - [x] Redis 캐시 레이어 — Valkey, `api-server`에 마켓별 최신 시세 캐시(`GET /api/latest/{market}`, TTL 24h)
-- [ ] Avro + Apicurio 스키마 레지스트리
+- [x] Avro + Apicurio 스키마 레지스트리 — `candle.1m`(내부 계약)만 적용, WebSocket/REST는 계속 JSON
 - [ ] OpenTelemetry/Prometheus/Loki/Tempo/Grafana 관측성 스택
 - [ ] Testcontainers 기반 통합 테스트
