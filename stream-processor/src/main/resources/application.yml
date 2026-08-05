@@ -10,5 +10,9 @@ spring:
         default.value.serde: org.apache.kafka.common.serialization.Serdes$StringSerde
         commit.interval.ms: 1000
 
+apicurio:
+  registry:
+    url: ${APICURIO_REGISTRY_URL:http://localhost:8080/apis/registry/v3}
+
 server:
   port: 8082

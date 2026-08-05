@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "CandleEvent",
+  "namespace": "com.upbit.stream.common.event",
+  "doc": "Kafka wire schema for the candle.1m topic. Kept in sync by hand with CandleEvent.kt — no codegen (the maintained Avro Gradle plugin is archived), producer/consumer map fields manually via GenericRecord.",
+  "fields": [
+    {"name": "market", "type": "string"},
+    {"name": "windowStartEpochMillis", "type": "long"},
+    {"name": "windowEndEpochMillis", "type": "long"},
+    {"name": "open", "type": "double"},
+    {"name": "high", "type": "double"},
+    {"name": "low", "type": "double"},
+    {"name": "close", "type": "double"},
+    {"name": "volume", "type": "double"}
+  ]
+}

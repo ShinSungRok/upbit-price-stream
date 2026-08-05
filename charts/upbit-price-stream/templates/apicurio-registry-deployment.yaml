@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apicurio-registry
+  labels:
+    app: apicurio-registry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apicurio-registry
+  template:
+    metadata:
+      labels:
+        app: apicurio-registry
+    spec:
+      containers:
+        - name: apicurio-registry
+          image: "{{ .Values.apicurioRegistry.image.repository }}:{{ .Values.apicurioRegistry.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.apicurioRegistry.service.port }}
+          resources:
+{{ toYaml .Values.apicurioRegistry.resources | indent 12 }}

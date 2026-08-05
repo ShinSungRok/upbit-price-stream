@@ -1,9 +1,16 @@
 package com.upbit.stream.processor.topology
 
-import com.upbit.stream.common.event.CandleEvent
+import com.upbit.stream.common.avro.CandleEventAvroMapper
 import com.upbit.stream.common.kafka.KafkaTopics
-import kotlinx.serialization.json.Json
+import org.apache.avro.generic.GenericDatumReader
+import org.apache.avro.generic.GenericDatumWriter
+import org.apache.avro.generic.GenericRecord
+import org.apache.avro.io.DecoderFactory
+import org.apache.avro.io.EncoderFactory
+import org.apache.kafka.common.serialization.Deserializer
+import org.apache.kafka.common.serialization.Serde
 import org.apache.kafka.common.serialization.Serdes
+import org.apache.kafka.common.serialization.Serializer
 import org.apache.kafka.streams.StreamsBuilder
 import org.apache.kafka.streams.StreamsConfig
 import org.apache.kafka.streams.TestInputTopic
@@ -13,20 +20,39 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayOutputStream
 import java.time.Instant
 import java.util.Properties
 
+/**
+ * Uses a plain, registry-free Avro serde (raw binary against the known schema) rather than
+ * Apicurio's registry-backed one, so this stays a hermetic, no-network unit test.
+ */
+private val rawAvroSerde: Serde<GenericRecord> = object : Serde<GenericRecord> {
+    override fun serializer() = Serializer<GenericRecord> { _, data ->
+        val out = ByteArrayOutputStream()
+        val encoder = EncoderFactory.get().binaryEncoder(out, null)
+        GenericDatumWriter<GenericRecord>(CandleEventAvroMapper.SCHEMA).write(data, encoder)
+        encoder.flush()
+        out.toByteArray()
+    }
+
+    override fun deserializer() = Deserializer<GenericRecord> { _, data ->
+        val decoder = DecoderFactory.get().binaryDecoder(data, null)
+        GenericDatumReader<GenericRecord>(CandleEventAvroMapper.SCHEMA).read(null, decoder)
+    }
+}
+
 class CandleTopologyTest {
 
-    private val json = Json { ignoreUnknownKeys = true }
     private lateinit var driver: TopologyTestDriver
     private lateinit var inputTopic: TestInputTopic<String, String>
-    private lateinit var outputTopic: TestOutputTopic<String, String>
+    private lateinit var outputTopic: TestOutputTopic<String, GenericRecord>
 
     @BeforeEach
     fun setUp() {
         val builder = StreamsBuilder()
-        CandleTopology.build(builder)
+        CandleTopology.build(builder, rawAvroSerde)
 
         val props = Properties().apply {
             put(StreamsConfig.APPLICATION_ID_CONFIG, "candle-topology-test")
@@ -44,7 +70,7 @@ class CandleTopologyTest {
         outputTopic = driver.createOutputTopic(
             KafkaTopics.CANDLE_1M,
             Serdes.String().deserializer(),
-            Serdes.String().deserializer(),
+            rawAvroSerde.deserializer(),
         )
     }
 
@@ -95,7 +121,7 @@ class CandleTopologyTest {
         val outputs = outputTopic.readKeyValuesToList()
         assertThat(outputs).hasSize(3)
 
-        val finalCandle = json.decodeFromString(CandleEvent.serializer(), outputs.last().value)
+        val finalCandle = CandleEventAvroMapper.fromGenericRecord(outputs.last().value)
 
         assertThat(finalCandle.market).isEqualTo("KRW-BTC")
         assertThat(finalCandle.open).isEqualTo(100_000_000.0)
@@ -117,7 +143,7 @@ class CandleTopologyTest {
         )
 
         val outputs = outputTopic.readKeyValuesToList()
-        val candles = outputs.map { json.decodeFromString(CandleEvent.serializer(), it.value) }
+        val candles = outputs.map { CandleEventAvroMapper.fromGenericRecord(it.value) }
 
         assertThat(candles.map { it.windowStartEpochMillis }.distinct()).hasSize(2)
         assertThat(candles[0].volume).isEqualTo(1.0)
@@ -134,7 +160,7 @@ class CandleTopologyTest {
         val outputs = outputTopic.readKeyValuesToList()
         assertThat(outputs).hasSize(1)
 
-        val candle = json.decodeFromString(CandleEvent.serializer(), outputs.single().value)
+        val candle = CandleEventAvroMapper.fromGenericRecord(outputs.single().value)
         assertThat(candle.open).isEqualTo(800.0)
         assertThat(candle.volume).isEqualTo(5.0)
     }

@@ -8,8 +8,12 @@ import reactor.core.publisher.Flux
 import reactor.core.publisher.Sinks
 
 /**
- * Bridges the live Kafka streams (raw ticker + 1m candles) into an in-process multicast [Sinks.Many]
- * that any number of connected WebSocket clients can subscribe to.
+ * Bridges the live Kafka streams into an in-process multicast [Sinks.Many] that any number of
+ * connected WebSocket clients can subscribe to. Only handles the raw ticker topic itself (plain
+ * String/JSON, default consumer factory); [com.upbit.stream.api.stream.CandleBroadcastListener]
+ * publishes candle.1m (Avro, its own listener container factory) into the same sink via [publish]
+ * — Spring Kafka's ConsumerFactory only supports one value deserializer per factory, so the two
+ * topics can't share a single @KafkaListener anymore now that candle.1m is Avro-encoded.
  *
  * Uses a regular (blocking) spring-kafka [KafkaListener] rather than a reactive Kafka client:
  * reactor-kafka was discontinued in May 2025, and Spring's own reactive Kafka template is being
@@ -23,14 +27,13 @@ class MarketDataBroadcaster {
 
     fun stream(): Flux<String> = sink.asFlux()
 
-    @KafkaListener(
-        topics = [KafkaTopics.UPBIT_TICKER_RAW, KafkaTopics.CANDLE_1M],
-        groupId = "api-server",
-    )
-    fun onMessage(payload: String) {
+    fun publish(payload: String) {
         val result = sink.tryEmitNext(payload)
         if (result.isFailure) {
             log.warn("Failed to emit market data to WebSocket sink: {}", result)
         }
     }
+
+    @KafkaListener(topics = [KafkaTopics.UPBIT_TICKER_RAW], groupId = "api-server")
+    fun onTicker(payload: String) = publish(payload)
 }

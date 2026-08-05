@@ -17,6 +17,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.questdb.client)
+    implementation(libs.apicurio.avro.serde)
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     runtimeOnly("org.postgresql:postgresql")
 

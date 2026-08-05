@@ -16,6 +16,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-kafka")
     implementation("org.apache.kafka:kafka-streams")
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.apicurio.avro.serde)
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.apache.kafka:kafka-streams-test-utils")

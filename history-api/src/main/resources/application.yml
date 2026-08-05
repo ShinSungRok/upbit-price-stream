@@ -7,7 +7,9 @@ spring:
       group-id: history-api
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: io.apicurio.registry.serde.avro.AvroKafkaDeserializer
+    properties:
+      apicurio.registry.url: ${APICURIO_REGISTRY_URL:http://localhost:8080/apis/registry/v3}
   datasource:
     url: ${QUESTDB_JDBC_URL:jdbc:postgresql://localhost:8812/qdb}
     username: ${QUESTDB_JDBC_USER:admin}

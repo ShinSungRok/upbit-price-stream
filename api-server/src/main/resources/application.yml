@@ -13,5 +13,9 @@ spring:
       host: ${VALKEY_HOST:localhost}
       port: ${VALKEY_PORT:6379}
 
+apicurio:
+  registry:
+    url: ${APICURIO_REGISTRY_URL:http://localhost:8080/apis/registry/v3}
+
 server:
   port: 8080

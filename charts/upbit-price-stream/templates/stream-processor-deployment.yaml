@@ -1,1 +1,1 @@
-{{ include "upbit.appDeployment" (dict "name" "stream-processor" "image" .Values.streamProcessor.image "resources" .Values.streamProcessor.resources "autoscaling" .Values.streamProcessor.autoscaling "root" $) }}
+{{ include "upbit.appDeployment" (dict "name" "stream-processor" "image" .Values.streamProcessor.image "resources" .Values.streamProcessor.resources "autoscaling" .Values.streamProcessor.autoscaling "root" $ "extraEnv" (list (dict "name" "APICURIO_REGISTRY_URL" "value" (printf "http://apicurio-registry:%v/apis/registry/v3" .Values.apicurioRegistry.service.port)))) }}

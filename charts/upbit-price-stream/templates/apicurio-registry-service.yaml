@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: apicurio-registry
+spec:
+  type: ClusterIP
+  selector:
+    app: apicurio-registry
+  ports:
+    - port: {{ .Values.apicurioRegistry.service.port }}
+      targetPort: {{ .Values.apicurioRegistry.service.port }}

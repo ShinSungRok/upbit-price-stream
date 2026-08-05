@@ -9,4 +9,5 @@ kotlin {
 
 dependencies {
     api(libs.kotlinx.serialization.json)
+    api(libs.avro)
 }
