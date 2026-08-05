@@ -2,7 +2,7 @@
 
 업비트(Upbit) 공개 WebSocket에서 들어오는 실시간 시세를 **Apache Kafka**로 수집·분산 처리하고, **Kubernetes** 위에서 각 컴포넌트를 독립적으로 배포·확장하는 것을 목표로 하는 스트리밍 데이터 엔지니어링 포트폴리오 프로젝트입니다.
 
-> **현재 단계: Phase 2 진행 중** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps, QuestDB 영속화, Valkey 캐시, Avro + Apicurio 스키마 레지스트리, OpenTelemetry + Grafana 관측성 스택까지 로컬 k3d/docker-compose에서 실제 배포·동작 검증 완료. 남은 항목은 통합테스트입니다. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
+> **현재 단계: Phase 2 완료** — Kubernetes + Strimzi Operator + Helm(HPA 포함) + ArgoCD GitOps, QuestDB 영속화, Valkey 캐시, Avro + Apicurio 스키마 레지스트리, OpenTelemetry + Grafana 관측성 스택, Testcontainers 기반 통합 테스트까지 로컬 k3d/docker-compose에서 실제 배포·동작 검증 완료. 자세한 내용은 [Phase 2 (예정)](#phase-2-예정), [`k8s/README.md`](k8s/README.md), [`argocd/README.md`](argocd/README.md) 참고.
 
 ## 왜 Kafka인가
 
@@ -89,6 +89,21 @@ sequenceDiagram
 | 캐시 | Valkey 8.1 | Redis 대신 — RSAL/SSPL 라이선스 전환 이후 커뮤니티가 옮겨간 BSD-3 포크, 프로토콜 호환. 마켓별 최신 시세 캐시(TTL 24h) |
 | 스키마 레지스트리 | Avro + Apicurio Registry 3.3.1 | `candle.1m`(내부 계약)만 적용, Confluent 미의존 순수 Apache-2.0 스택 |
 | 관측성 | OTel Java Agent 2.30.0 + `grafana/otel-lgtm`(Prometheus/Loki/Tempo/Grafana) | 앱 코드 변경 없이 자동 계측, Kafka 헤더로 트레이스 컨텍스트 전파 확인 |
+| 통합 테스트 | Testcontainers 2.0.5 | 실제 Kafka/Apicurio/Valkey/QuestDB 컨테이너로 stream-processor·api-server·history-api 검증 |
+
+## 테스트
+
+`stream-processor`(`CandleTopologyTest`)에는 `TopologyTestDriver` 기반 hermetic 유닛 테스트가 있고, `stream-processor`/`api-server`/`history-api` 세 모듈에는 **Testcontainers로 실제 Kafka + Apicurio(+ Valkey/QuestDB)를 띄우는 통합 테스트**가 추가로 있습니다.
+
+- `stream-processor`: `upbit.ticker.raw`에 실제 JSON 티커를 발행하고, `candle.1m`을 실제 Apicurio 스키마 레지스트리 기반 Avro 디코더로 소비 — 유닛 테스트가 쓰는 레지스트리 없는 raw serde로는 검증 못 하는 "진짜 스키마 등록/조회 왕복"을 확인합니다.
+- `api-server`: Kafka + Valkey(RedisContainer로 `valkey/valkey` 이미지를 `redis`의 호환 대체 이미지로 등록) 컨테이너로 `LatestPriceCache` → `GET /api/latest/{market}` 경로를 검증합니다.
+- `history-api`: Kafka + Apicurio + QuestDB 컨테이너로 `CandleWriter`(ILP 쓰기) → `GET /api/candles`(JDBC 조회) 경로와 `QuestDbSchemaInitializer`의 DEDUP 테이블 생성을 검증합니다.
+- `collector`는 이번 범위에서 제외했습니다 — 핵심 로직이 업비트의 실제 WebSocket 서버에 연결하는 것이라 Testcontainers로 흉내낼 대상이 없고, 목 WebSocket 서버를 직접 구현하는 건 가치 대비 비용이 커서 의도적으로 뺐습니다.
+
+```bash
+./gradlew test                          # 유닛 테스트 전체
+./gradlew :stream-processor:test :api-server:test :history-api:test   # 통합 테스트만(도커 필요, 컨테이너 이미지를 최초 1회 pull)
+```
 
 ## 로컬 실행
 
@@ -142,4 +157,4 @@ kubectl -n upbit port-forward svc/api-server 18081:8080
 - [x] Redis 캐시 레이어 — Valkey, `api-server`에 마켓별 최신 시세 캐시(`GET /api/latest/{market}`, TTL 24h)
 - [x] Avro + Apicurio 스키마 레지스트리 — `candle.1m`(내부 계약)만 적용, WebSocket/REST는 계속 JSON
 - [x] OpenTelemetry/Prometheus/Loki/Tempo/Grafana 관측성 스택 — `-javaagent` 자동 계측(코드 변경 없음), Kafka 헤더로 서비스 경계를 넘는 분산 트레이스 확인
-- [ ] Testcontainers 기반 통합 테스트
+- [x] Testcontainers 기반 통합 테스트 — stream-processor/api-server/history-api, 실제 Kafka+Apicurio(+Valkey/QuestDB)로 검증 (자세한 내용은 [테스트](#테스트) 참고)

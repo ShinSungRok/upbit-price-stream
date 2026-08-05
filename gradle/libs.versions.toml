@@ -7,6 +7,9 @@ kotlinx-serialization = "1.11.0"
 questdb-client = "1.3.6"
 avro = "1.12.0"
 apicurio-avro-serde = "3.0.8"
+testcontainers-bom = "2.0.5"
+testcontainers-redis = "2.2.4"
+awaitility = "4.3.0"
 
 [libraries]
 kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "kotlinx-coroutines" }
@@ -15,6 +18,9 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 questdb-client = { module = "org.questdb:questdb-client", version.ref = "questdb-client" }
 avro = { module = "org.apache.avro:avro", version.ref = "avro" }
 apicurio-avro-serde = { module = "io.apicurio:apicurio-registry-avro-serde-kafka", version.ref = "apicurio-avro-serde" }
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers-bom" }
+testcontainers-redis = { module = "com.redis:testcontainers-redis", version.ref = "testcontainers-redis" }
+awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
